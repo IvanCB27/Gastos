@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6f5c">
+<title>Mis Gastos</title>
+<!-- NOTA: el manifest permite "Agregar a pantalla de inicio" e instalarla como app. -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  /* NOTA: colores definidos como variables para poder cambiarlos en un solo lugar. */
+  :root {
+    --bg: #f4f6f5; --card: #ffffff; --text: #1c2421; --muted: #6b7672;
+    --accent: #1f6f5c; --accent-text: #ffffff; --border: #dde3e0; --danger: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121614; --card: #1c2220; --text: #e8eeeb; --muted: #9aa6a1;
+      --accent: #4fb89b; --accent-text: #0d1311; --border: #2c3532; --danger: #f2867e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) 16px 32px;
+  }
+  main { max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 20px 0 12px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px; margin-bottom: 14px;
+  }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: 0 0 4px; }
+  input {
+    width: 100%; font-size: 1.05rem; padding: 12px; margin-bottom: 12px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg); color: var(--text);
+  }
+  button {
+    font-size: 1rem; border: 0; border-radius: 10px; padding: 12px 14px;
+    background: var(--accent); color: var(--accent-text); cursor: pointer;
+  }
+  button.sec { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+  .full { width: 100%; font-weight: 600; }
+  .total { display: flex; justify-content: space-between; align-items: baseline; }
+  .total strong { font-size: 1.5rem; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  li:last-child { border-bottom: 0; }
+  .item { flex: 1; min-width: 0; }
+  .item .nom { overflow-wrap: anywhere; }
+  .item .fec { font-size: .8rem; color: var(--muted); }
+  .monto { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .del { background: transparent; color: var(--danger); padding: 6px 8px; font-size: 1.1rem; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row button { flex: 1; }
+  .muted { color: var(--muted); font-size: .85rem; }
+  .vacio { color: var(--muted); text-align: center; padding: 12px 0; }
+
+  /* ===== DASHBOARD (agregado v2) ===== */
+  /* NOTA: --bar-soft es la barra "de fondo" (mismo tono, más claro) para resaltar la actual. */
+  :root { --bar: var(--accent); --bar-soft: #a9cfc4; --grid: #e6ebe9; }
+  @media (prefers-color-scheme: dark) { :root { --bar-soft: #2f5c50; --grid: #2a3230; } }
+  h2 { font-size: 1.1rem; margin: 22px 0 10px; }
+  h3 { font-size: .95rem; margin: 0 0 2px; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
+  .kpi .lbl { font-size: .78rem; color: var(--muted); }
+  .kpi .val { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .kpi .sub { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+  .lectura { font-size: .85rem; color: var(--muted); min-height: 1.3em; margin: 2px 0 8px; font-variant-numeric: tabular-nums; }
+  svg.graf { width: 100%; height: auto; display: block; touch-action: pan-y; }
+  svg.graf text { fill: var(--muted); font-size: 10px; font-family: inherit; }
+  svg.graf .b { fill: var(--bar-soft); }
+  svg.graf .b.on, svg.graf .b.act { fill: var(--bar); }
+  .top { list-style: none; padding: 0; margin: 8px 0 0; }
+  .top li { display: block; border: 0; padding: 6px 0; }
+  .top .fila { display: flex; justify-content: space-between; font-size: .9rem; gap: 8px; }
+  .top .fila span:first-child { overflow-wrap: anywhere; }
+  .top .riel { height: 8px; border-radius: 4px; background: var(--grid); margin-top: 4px; }
+  .top .fill { height: 8px; border-radius: 4px; background: var(--bar); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mis Gastos</h1>
+
+  <!-- 1) REGISTRO: solo producto y costo; la fecha se pone sola. -->
+  <form class="card" id="form" autocomplete="off">
+    <label for="producto">Producto</label>
+    <input id="producto" required maxlength="80" placeholder="Ej. Almuerzo">
+    <label for="costo">Costo</label>
+    <!-- NOTA: inputmode="decimal" abre el teclado numérico en el celular. -->
+    <input id="costo" required type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0.00">
+    <button class="full" type="submit">Guardar</button>
+  </form>
+
+  <!-- 2) TOTAL del mes en curso -->
+  <div class="card total">
+    <span id="mesLabel">Este mes</span>
+    <strong id="totalMes">0.00</strong>
+  </div>
+
+  <!-- 3) HISTORIAL de registros guardados -->
+  <div class="card">
+    <ul id="lista"></ul>
+  </div>
+
+  <!-- ===== DASHBOARD (agregado v2) =====
+       NOTA: todo se calcula en el teléfono a partir de los registros guardados;
+       los gráficos se dibujan con SVG propio (sin librerías externas) para que
+       funcione 100 % offline. -->
+  <h2>Estadísticas</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="lbl">Gasto del mes</div><div class="val" id="kTotal">0.00</div><div class="sub" id="kVar"></div></div>
+    <div class="kpi"><div class="lbl">Promedio por día</div><div class="val" id="kProm">0.00</div><div class="sub" id="kDias"></div></div>
+    <div class="kpi"><div class="lbl">Registros del mes</div><div class="val" id="kNum">0</div><div class="sub" id="kTicket"></div></div>
+    <div class="kpi"><div class="lbl">Día de mayor gasto</div><div class="val" id="kMax">—</div><div class="sub" id="kMaxDia"></div></div>
+  </div>
+
+  <div class="card">
+    <h3>Gasto diario · mes actual</h3>
+    <div class="lectura" id="lecDia">Toca una barra para ver el detalle</div>
+    <svg class="graf" id="gDia" viewBox="0 0 320 130" role="img" aria-label="Gasto por día del mes actual"></svg>
+  </div>
+
+  <div class="card">
+    <h3>Gasto mensual · últimos 6 meses</h3>
+    <div class="lectura" id="lecMes">Toca una barra para ver el detalle</div>
+    <svg class="graf" id="gMes" viewBox="0 0 320 130" role="img" aria-label="Gasto por mes, últimos 6 meses"></svg>
+  </div>
+
+  <div class="card">
+    <h3>Productos con más gasto · mes actual</h3>
+    <ul class="top" id="topProd"></ul>
+  </div>
+
+  <!-- 4) RESPALDO: protege contra pérdida de datos al limpiar o cambiar de teléfono. -->
+  <div class="card">
+    <div class="row">
+      <button class="sec" id="btnCsv" type="button">Exportar CSV</button>
+      <button class="sec" id="btnRespaldo" type="button">Respaldo</button>
+      <button class="sec" id="btnRestaurar" type="button">Restaurar</button>
+    </div>
+    <input id="archivo" type="file" accept=".json,application/json" hidden>
+    <p class="muted" id="estado"></p>
+  </div>
+</main>
+
+<script>
+/*
+  ===== NOTAS DE DISEÑO =====
+  - Almacenamiento: localStorage del navegador. Se eligió por simplicidad: para
+    un registro de producto + costo el volumen de datos es mínimo (miles de
+    registros ocupan pocos cientos de KB). Los datos NUNCA salen del teléfono.
+  - Cada registro: { id, producto, costo, fecha (ISO) }.
+  - Riesgo conocido: borrar datos del navegador borra los registros.
+    Por eso existe el botón "Respaldo" (JSON) y se pide almacenamiento persistente.
+*/
+const CLAVE = 'gastos_v1';   // NOTA: el "_v1" permite migrar el formato en el futuro sin romper datos.
+
+function cargar() {
+  let raw = null;
+  try { raw = localStorage.getItem(CLAVE); } catch { return []; }
+  if (!raw) return [];
+  try {
+    const d = JSON.parse(raw);
+    if (!Array.isArray(d)) throw new Error('formato');
+    return d;
+  } catch {
+    // NOTA (v3): ANTES, si el dato estaba dañado la app arrancaba vacía y el siguiente
+    // "Guardar" lo SOBRESCRIBÍA, perdiéndolo para siempre. Ahora se guarda una copia
+    // del texto dañado en otra clave, para poder recuperarlo manualmente.
+    try { localStorage.setItem(CLAVE + '_danado_' + Date.now(), raw); } catch {}
+    const est = document.getElementById('estado');
+    if (est) est.textContent = 'Se detectaron datos dañados; se guardó una copia de seguridad interna.';
+    return [];
+  }
+}
+function guardar(datos) {
+  try { localStorage.setItem(CLAVE, JSON.stringify(datos)); return true; }
+  catch { aviso('No se pudo guardar (almacenamiento lleno o bloqueado).'); return false; }
+}
+
+let gastos = cargar();
+const $ = id => document.getElementById(id);
+const fmt = n => n.toFixed(2);
+function aviso(t) { $('estado').textContent = t; }
+
+// ---- Registrar ----
+$('form').addEventListener('submit', e => {
+  e.preventDefault();
+  const producto = $('producto').value.trim();
+  // NOTA: se reemplaza la coma por punto porque algunos teclados Android usan coma decimal.
+  const costo = parseFloat(String($('costo').value).replace(',', '.'));
+  if (!producto || !(costo > 0)) return;
+  // NOTA (v3): se relee lo guardado ANTES de modificar. Si la app está abierta a la vez
+  // como app instalada y como pestaña de Chrome, cada una tenía su propia copia en memoria
+  // y la última en guardar borraba lo registrado en la otra.
+  gastos = cargar();
+  gastos.unshift({ id: Date.now(), producto, costo: Math.round(costo * 100) / 100, fecha: new Date().toISOString() });
+  if (guardar(gastos)) {
+    $('form').reset();
+    $('producto').focus();
+    render();
+  }
+});
+
+// ---- Eliminar (con confirmación para evitar borrados accidentales) ----
+$('lista').addEventListener('click', e => {
+  // NOTA (v3): botón "Ver más" del historial
+  if (e.target.dataset.mas) { limite += 50; render(); return; }
+  const id = e.target.dataset.id;
+  if (!id) return;
+  const g = gastos.find(x => String(x.id) === id);
+  if (g && confirm(`¿Eliminar "${g.producto}"?`)) {
+    gastos = cargar();   // NOTA (v3): releer antes de modificar (ver nota en "Registrar").
+    gastos = gastos.filter(x => String(x.id) !== id);
+    guardar(gastos);
+    render();
+  }
+});
+
+// ---- Mostrar lista y total del mes ----
+function render() {
+  const ahora = new Date();
+  const total = gastos
+    .filter(g => { const f = new Date(g.fecha); return f.getMonth() === ahora.getMonth() && f.getFullYear() === ahora.getFullYear(); })
+    .reduce((s, g) => s + g.costo, 0);
+  $('mesLabel').textContent = 'Total ' + ahora.toLocaleDateString('es', { month: 'long', year: 'numeric' });
+  $('totalMes').textContent = fmt(total);
+
+  renderDashboard();   // NOTA (v2): el dashboard se recalcula cada vez que cambia la lista.
+
+  const lista = $('lista');
+  lista.innerHTML = '';
+  if (!gastos.length) { lista.innerHTML = '<li class="vacio">Aún no hay registros</li>'; return; }
+  // NOTA (v3): se muestran solo los últimos `limite` registros. Con años de uso
+  // (miles de registros) dibujar todos a la vez vuelve lenta la app en celulares
+  // modestos. Los totales y gráficos SÍ usan todos los registros.
+  for (const g of gastos.slice(0, limite)) {
+    // NOTA: se construye con textContent (no innerHTML) para que un nombre de producto
+    // con símbolos raros no rompa la página.
+    const li = document.createElement('li');
+    const item = document.createElement('div'); item.className = 'item';
+    const nom = document.createElement('div'); nom.className = 'nom'; nom.textContent = g.producto;
+    const fec = document.createElement('div'); fec.className = 'fec';
+    fec.textContent = new Date(g.fecha).toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' });
+    item.append(nom, fec);
+    const monto = document.createElement('span'); monto.className = 'monto'; monto.textContent = fmt(g.costo);
+    const del = document.createElement('button'); del.className = 'del'; del.textContent = '✕';
+    del.dataset.id = g.id; del.setAttribute('aria-label', 'Eliminar');
+    li.append(item, monto, del);
+    lista.append(li);
+  }
+  if (gastos.length > limite) {
+    const li = document.createElement('li');
+    const mas = document.createElement('button');
+    mas.className = 'sec full'; mas.type = 'button'; mas.dataset.mas = '1';
+    mas.textContent = `Ver más (${gastos.length - limite} restantes)`;
+    li.append(mas); lista.append(li);
+  }
+}
+let limite = 50;   // NOTA (v3): cantidad de registros visibles en el historial.
+
+// NOTA (v3): mantener la app al día sin acciones del usuario:
+// - 'storage': otra ventana/pestaña de la app guardó cambios → recargar.
+// - 'visibilitychange': al volver a la app (p. ej. al día siguiente o al cambiar
+//   de mes) se recalculan totales y gráficos; antes quedaban con la fecha anterior.
+window.addEventListener('storage', e => { if (e.key === CLAVE) { gastos = cargar(); render(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { gastos = cargar(); render(); } });
+
+// =====================================================================
+// ===== DASHBOARD (agregado v2) =====
+// =====================================================================
+const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+// Suma de costos de los registros que cumplen un filtro de fecha.
+function sumar(filtro) {
+  return gastos.reduce((s, g) => { const f = new Date(g.fecha); return filtro(f) ? s + g.costo : s; }, 0);
+}
+
+function renderDashboard() {
+  const hoyD = new Date();
+  const y = hoyD.getFullYear(), m = hoyD.getMonth(), d = hoyD.getDate();
+  const delMes = gastos.filter(g => { const f = new Date(g.fecha); return f.getFullYear() === y && f.getMonth() === m; });
+  const total = delMes.reduce((s, g) => s + g.costo, 0);
+
+  // --- KPI 1: total + variación ---
+  // NOTA: se compara contra el MISMO PERIODO del mes anterior (días 1 a hoy),
+  // no contra el mes anterior completo. Comparar un mes a medias con uno completo
+  // siempre daría una "baja" engañosa.
+  const pm = new Date(y, m - 1, 1);
+  const diasPrev = new Date(y, m, 0).getDate();              // días que tuvo el mes anterior
+  const tope = Math.min(d, diasPrev);                          // evita pasar del 31 al 28, etc.
+  const prev = sumar(f => f.getFullYear() === pm.getFullYear() && f.getMonth() === pm.getMonth() && f.getDate() <= tope);
+  $('kTotal').textContent = fmt(total);
+  if (prev > 0) {
+    const v = (total - prev) / prev * 100;
+    // NOTA: flecha + texto (no solo color) para que el sentido se entienda sin depender del color.
+    $('kVar').textContent = `${v >= 0 ? '▲' : '▼'} ${Math.abs(v).toFixed(0)}% vs. mismo periodo mes anterior`;
+  } else {
+    $('kVar').textContent = 'Sin datos del mes anterior';
+  }
+
+  // --- KPI 2: promedio por día (días transcurridos del mes, incluido hoy) ---
+  $('kProm').textContent = fmt(total / d);
+  $('kDias').textContent = `${d} días transcurridos`;
+
+  // --- KPI 3: número de registros y gasto promedio por registro ---
+  $('kNum').textContent = delMes.length;
+  $('kTicket').textContent = delMes.length ? `Promedio ${fmt(total / delMes.length)} c/u` : '';
+
+  // --- Gasto diario del mes (también alimenta el KPI 4) ---
+  const diasMes = new Date(y, m + 1, 0).getDate();
+  const porDia = Array(diasMes).fill(0);
+  delMes.forEach(g => { porDia[new Date(g.fecha).getDate() - 1] += g.costo; });
+  const iMax = porDia.indexOf(Math.max(...porDia));
+  if (total > 0) {
+    $('kMax').textContent = fmt(porDia[iMax]);
+    $('kMaxDia').textContent = `${iMax + 1} de ${MESES[m].toLowerCase()}`;
+  } else {
+    $('kMax').textContent = '—'; $('kMaxDia').textContent = '';
+  }
+  barras($('gDia'), $('lecDia'), porDia.map((v, i) => ({
+    v,
+    eje: (i === 0 || (i + 1) % 5 === 0) ? String(i + 1) : '',    // NOTA: rótulo cada 5 días para no saturar.
+    txt: `${i + 1} ${MESES[m]}: ${fmt(v)}`,
+    act: i + 1 === d                                              // resalta el día de hoy
+  })));
+
+  // --- Gasto mensual, últimos 6 meses ---
+  const meses = [];
+  for (let k = 5; k >= 0; k--) {
+    const ref = new Date(y, m - k, 1);
+    const v = sumar(f => f.getFullYear() === ref.getFullYear() && f.getMonth() === ref.getMonth());
+    meses.push({ v, eje: MESES[ref.getMonth()], txt: `${MESES[ref.getMonth()]} ${ref.getFullYear()}: ${fmt(v)}`, act: k === 0 });
+  }
+  barras($('gMes'), $('lecMes'), meses);
+
+  // --- Top 5 productos del mes ---
+  // NOTA: se agrupa ignorando mayúsculas y espacios extra ("Pan" = "pan "),
+  // y se muestra el nombre tal como se escribió la primera vez.
+  const grupos = new Map();
+  delMes.forEach(g => {
+    const k = g.producto.trim().toLowerCase().replace(/\s+/g, ' ');
+    const a = grupos.get(k) || { nombre: g.producto.trim(), suma: 0, n: 0 };
+    a.suma += g.costo; a.n++; grupos.set(k, a);
+  });
+  const top = [...grupos.values()].sort((a, b) => b.suma - a.suma).slice(0, 5);
+  const ul = $('topProd'); ul.innerHTML = '';
+  if (!top.length) { ul.innerHTML = '<li class="vacio">Sin registros este mes</li>'; return; }
+  top.forEach(p => {
+    const li = document.createElement('li');
+    const fila = document.createElement('div'); fila.className = 'fila';
+    const a = document.createElement('span'); a.textContent = `${p.nombre} (${p.n})`;
+    const b = document.createElement('span'); b.className = 'monto';
+    b.textContent = `${fmt(p.suma)} · ${(p.suma / total * 100).toFixed(0)}%`;
+    fila.append(a, b);
+    const riel = document.createElement('div'); riel.className = 'riel';
+    const fill = document.createElement('div'); fill.className = 'fill';
+    fill.style.width = (p.suma / top[0].suma * 100) + '%';     // barra relativa al producto #1
+    riel.append(fill); li.append(fila, riel); ul.append(li);
+  });
+}
+
+/*
+  Gráfico de barras en SVG.
+  datos: [{ v: valor, eje: rótulo eje X, txt: texto al tocar, act: resaltar }]
+  NOTA: cada barra tiene una zona táctil transparente de toda la altura, más grande
+  que la barra, para que sea fácil tocarla con el dedo (las barras de 0 también).
+*/
+function barras(svg, lectura, datos) {
+  const W = 320, H = 130, top = 8, base = 110, izq = 30;
+  const max = Math.max(...datos.map(x => x.v), 0);
+  const escala = max > 0 ? (base - top) / max : 0;
+  const ancho = (W - izq) / datos.length;
+  const gap = Math.max(1, ancho * 0.18);                      // separación entre barras
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (t, at) => { const e = document.createElementNS(NS, t); for (const k in at) e.setAttribute(k, at[k]); return e; };
+  svg.innerHTML = '';
+
+  // Líneas guía y escala del eje Y (0, mitad y máximo)
+  [0, 0.5, 1].forEach(p => {
+    const yy = base - (base - top) * p;
+    svg.append(el('line', { x1: izq, x2: W, y1: yy, y2: yy, stroke: 'var(--grid)', 'stroke-width': 1 }));
+    const t = el('text', { x: izq - 4, y: yy + 3, 'text-anchor': 'end' });
+    t.textContent = max > 0 ? abreviar(max * p) : (p === 0 ? '0' : '');
+    svg.append(t);
+  });
+
+  datos.forEach((x, i) => {
+    const x0 = izq + i * ancho;
+    const h = x.v * escala;
+    const bw = ancho - gap;
+    let barraEl = null;   // referencia directa a la barra, para resaltarla al tocar
+    if (h > 0) {
+      // NOTA: barra con esquinas superiores redondeadas y base plana sobre el eje.
+      const r = Math.min(3, bw / 2, h);
+      const xa = x0 + gap / 2, ya = base - h;
+      barraEl = el('path', {
+        class: 'b' + (x.act ? ' act' : ''),
+        d: `M${xa},${base} V${ya + r} Q${xa},${ya} ${xa + r},${ya} H${xa + bw - r} Q${xa + bw},${ya} ${xa + bw},${ya + r} V${base} Z`
+      });
+      svg.append(barraEl);
+    }
+    if (x.eje) {
+      const t = el('text', { x: x0 + ancho / 2, y: base + 14, 'text-anchor': 'middle' });
+      t.textContent = x.eje; svg.append(t);
+    }
+    // Zona táctil
+    const hit = el('rect', { x: x0, y: top, width: ancho, height: base - top + 18, fill: 'transparent' });
+    const mostrar = () => {
+      lectura.textContent = x.txt;
+      svg.querySelectorAll('.b.on').forEach(b => b.classList.remove('on'));
+      if (barraEl) barraEl.classList.add('on');
+    };
+    hit.addEventListener('pointerenter', mostrar);
+    hit.addEventListener('click', mostrar);
+    svg.append(hit);
+  });
+}
+
+// Abrevia números del eje: 1500 → 1.5k
+function abreviar(n) { return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : n.toFixed(0); }
+
+// ---- Descargar archivo (usado por CSV y respaldo) ----
+function descargar(nombre, contenido, tipo) {
+  const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
+  const a = document.createElement('a'); a.href = url; a.download = nombre; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+const hoy = () => new Date().toISOString().slice(0, 10);
+
+// ---- Exportar CSV (para abrir en Excel / Power BI) ----
+// NOTA: separador ";" porque Excel en español usa coma decimal y ";" como separador de columnas.
+// El "﻿" (BOM) hace que Excel reconozca tildes y ñ correctamente.
+$('btnCsv').addEventListener('click', () => {
+  const filas = gastos.map(g => {
+    const f = new Date(g.fecha);
+    const fecha = f.toLocaleDateString('es-ES') + ' ' + f.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    // NOTA (v3): si el nombre empieza con = + - @ se antepone un apóstrofo para que
+    // Excel lo trate como texto y no como fórmula (protección contra "CSV injection").
+    const seguro = /^[=+\-@]/.test(g.producto) ? "'" + g.producto : g.producto;
+    const prod = '"' + seguro.replace(/"/g, '""') + '"';
+    return [fecha, prod, g.costo.toFixed(2).replace('.', ',')].join(';');
+  });
+  descargar(`gastos_${hoy()}.csv`, '﻿Fecha;Producto;Costo\n' + filas.join('\n'), 'text/csv');
+  aviso('CSV exportado a Descargas.');
+});
+
+// ---- Respaldo completo (JSON) ----
+$('btnRespaldo').addEventListener('click', () => {
+  descargar(`respaldo_gastos_${hoy()}.json`, JSON.stringify(gastos), 'application/json');
+  aviso('Respaldo guardado en Descargas. Guárdalo también fuera del teléfono.');
+});
+
+// ---- Restaurar respaldo ----
+// NOTA: se FUSIONA con lo existente (no reemplaza) y se evitan duplicados por id,
+// así restaurar dos veces el mismo archivo no duplica registros.
+$('btnRestaurar').addEventListener('click', () => $('archivo').click());
+$('archivo').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const datos = JSON.parse(await file.text());
+    if (!Array.isArray(datos)) throw 0;
+    gastos = cargar();   // NOTA (v3): releer antes de modificar.
+    const ids = new Set(gastos.map(g => g.id));
+    // NOTA (v3): se valida el TIPO de cada campo y que la fecha sea válida, para que
+    // un archivo dañado o manipulado no bloquee la app.
+    const nuevos = datos.filter(g => g
+      && typeof g.id === 'number'
+      && typeof g.producto === 'string' && g.producto.trim() && g.producto.length <= 80
+      && typeof g.costo === 'number' && isFinite(g.costo) && g.costo > 0
+      && typeof g.fecha === 'string' && !isNaN(Date.parse(g.fecha))
+      && !ids.has(g.id))
+      // NOTA (v3): se normaliza fecha (formato ISO) y costo (2 decimales) para que el
+      // ordenamiento y las sumas sean siempre correctos; se descartan campos extra.
+      .map(g => ({ id: g.id, producto: g.producto.trim(), costo: Math.round(g.costo * 100) / 100,
+                   fecha: new Date(g.fecha).toISOString() }));
+    gastos = gastos.concat(nuevos).sort((a, b) => b.fecha.localeCompare(a.fecha));
+    guardar(gastos); render();
+    aviso(`Restaurados ${nuevos.length} registros.`);
+  } catch { aviso('El archivo no es un respaldo válido.'); }
+  e.target.value = '';
+});
+
+// ---- Modo offline ----
+// NOTA: el service worker (sw.js) guarda la app en el teléfono la primera vez;
+// después abre sin internet.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+// NOTA: pide al navegador no borrar estos datos automáticamente cuando falta espacio.
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist().catch(() => {});
+}
+
+render();
+</script>
+</body>
+</html>
